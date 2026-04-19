@@ -83,47 +83,38 @@ function DepartmentNode({ data }: NodeProps) {
 }
 
 /* ── Agent Node ── */
-interface AgentNodeData {
-  label: string;
-  status: string;
-  agent: Agent;
-  onClickAgent?: () => void;
-}
-
-function AgentNode({ data }: NodeProps<AgentNodeData>) {
+function AgentNode({ data }: NodeProps) {
   const color = statusColor[data.status] || '#6b7280';
   return (
-    <div
-      onClick={() => data.onClickAgent?.()}
-      style={{
-        background: '#0f172a',
-        border: `1.5px solid ${color}`,
-        borderRadius: 8,
-        padding: '10px 16px',
-        color: '#e2e8f0',
-        fontSize: 13,
-        minWidth: 130,
-        cursor: 'pointer',
-        textAlign: 'center',
-      }}
-    >
+    <div style={{ position: 'relative' }}>
       <Handle type="target" position={Position.Top} style={{ background: color }} />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
-        <span
-          style={{
-            width: 8,
-            height: 8,
-            borderRadius: '50%',
-            background: color,
-            display: 'inline-block',
-            flexShrink: 0,
-          }}
-        />
-        <span style={{ fontWeight: 600 }}>{data.label}</span>
-      </div>
-      <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2, textTransform: 'capitalize' }}>
-        {data.status}
-      </div>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          if (data.onClickAgent) data.onClickAgent();
+        }}
+        style={{
+          background: '#0f172a',
+          border: `1.5px solid ${color}`,
+          borderRadius: 8,
+          padding: '10px 16px',
+          color: '#e2e8f0',
+          fontSize: 13,
+          minWidth: 130,
+          cursor: 'pointer',
+          textAlign: 'center',
+          display: 'block',
+          width: '100%',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, display: 'inline-block' }} />
+          <span style={{ fontWeight: 600 }}>{data.label}</span>
+        </div>
+        <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2, textTransform: 'capitalize' }}>
+          {data.status}
+        </div>
+      </button>
     </div>
   );
 }
