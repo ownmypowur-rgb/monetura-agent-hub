@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import ReactFlow, {
   Node,
   Edge,
@@ -83,10 +83,18 @@ function DepartmentNode({ data }: NodeProps) {
 }
 
 /* ── Agent Node ── */
-function AgentNode({ data }: NodeProps) {
+interface AgentNodeData {
+  label: string;
+  status: string;
+  agent: Agent;
+  onClickAgent?: () => void;
+}
+
+function AgentNode({ data }: NodeProps<AgentNodeData>) {
   const color = statusColor[data.status] || '#6b7280';
   return (
     <div
+      onClick={() => data.onClickAgent?.()}
       style={{
         background: '#0f172a',
         border: `1.5px solid ${color}`,
@@ -132,12 +140,6 @@ const edgeStyle = { stroke: '#4B5563', strokeWidth: 1.5 };
 /* ── Main Component ── */
 export default function AgentOrgChart({ workspaceId }: { workspaceId: number }) {
   const [selectedAgent, setSelectedAgent] = useState<any>(null);
-
-  const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
-    if (node.type === 'agentNode' && node.data.agent) {
-      setSelectedAgent(node.data.agent);
-    }
-  }, []);
 
   const nodes: Node[] = useMemo(() => {
     const result: Node[] = [];
@@ -197,8 +199,9 @@ export default function AgentOrgChart({ workspaceId }: { workspaceId: number }) 
           label: agent.name,
           status: agent.status,
           agent,
+          onClickAgent: () => setSelectedAgent(agent),
         },
-        draggable: true,
+        draggable: false,
       });
     });
 
@@ -252,8 +255,7 @@ export default function AgentOrgChart({ workspaceId }: { workspaceId: number }) 
         defaultViewport={{ x: 0, y: 0, zoom: 0.85 }}
         fitView={false}
         proOptions={{ hideAttribution: true }}
-        nodesDraggable={true}
-        onNodeClick={onNodeClick}
+        nodesDraggable={false}
         nodesConnectable={false}
         elementsSelectable={true}
       />
