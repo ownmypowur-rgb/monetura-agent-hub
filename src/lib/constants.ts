@@ -5,7 +5,7 @@ export const WORKSPACES = {
 } as const;
 
 export const WORKSPACE_NAMES: Record<number, string> = {
-  1: "Monetura",
+  1: "Monetura Media",
   2: "Solis Energy",
   3: "QuotePath",
 };
