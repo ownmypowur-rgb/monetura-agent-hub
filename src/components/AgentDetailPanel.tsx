@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 
-const ORCHESTRATOR_URL = "https://mountain-compliance-molecular-territory.trycloudflare.com";
+const ORCHESTRATOR_URL = "/api/orchestrator";
 const ORCHESTRATOR_API_KEY = "7d7f64cdd061fa2ccce94cba04acccca9e8bc4acceffbdf53400aa67c6d55599";
 
 interface Agent {
