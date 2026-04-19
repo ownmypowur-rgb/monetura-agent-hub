@@ -1,255 +1,129 @@
 'use client';
-
-import React, { useState, useMemo } from 'react';
-import ReactFlow, {
-  Node,
-  Edge,
-  NodeTypes,
-  Handle,
-  Position,
-  NodeProps,
-} from 'reactflow';
-import 'reactflow/dist/style.css';
+import { useState } from 'react';
 import AgentDetailPanel from './AgentDetailPanel';
-import type { Agent } from '@/types/agent';
-import { WORKSPACE_NAMES } from '@/lib/constants';
 
-/* ── status helpers ── */
+const STATIC_AGENTS = [
+  { id: 'a1', name: 'Facebook Agent', status: 'active', role: 'facebook_poster', family: 'marketing', department: 'Marketing', workspaceId: 2, model: 'claude', description: 'Posts to Facebook', tools: [], constraints: {}, systemPrompt: '', createdAt: new Date(), lastRunAt: new Date(), lastRunStatus: 'success', executionCount: 142, successRate: 98 },
+  { id: 'a2', name: 'Instagram Agent', status: 'active', role: 'instagram_poster', family: 'marketing', department: 'Marketing', workspaceId: 2, model: 'claude', description: 'Posts to Instagram', tools: [], constraints: {}, systemPrompt: '', createdAt: new Date(), lastRunAt: new Date(), lastRunStatus: 'success', executionCount: 89, successRate: 95 },
+  { id: 'a3', name: 'Blog Writer Agent', status: 'paused', role: 'blog_writer', family: 'marketing', department: 'Marketing', workspaceId: 2, model: 'claude', description: 'Writes blog posts', tools: [], constraints: {}, systemPrompt: '', createdAt: new Date(), lastRunAt: null, lastRunStatus: null, executionCount: 34, successRate: 91 },
+  { id: 'a4', name: 'Inbound Caller Agent', status: 'active', role: 'inbound_caller', family: 'sales', department: 'Sales', workspaceId: 2, model: 'vapi', description: 'Handles inbound calls', tools: [], constraints: {}, systemPrompt: '', createdAt: new Date(), lastRunAt: new Date(), lastRunStatus: 'success', executionCount: 521, successRate: 94 },
+  { id: 'a5', name: 'Lead Qualifier Agent', status: 'active', role: 'lead_qualifier', family: 'sales', department: 'Sales', workspaceId: 2, model: 'claude', description: 'Qualifies leads', tools: [], constraints: {}, systemPrompt: '', createdAt: new Date(), lastRunAt: new Date(), lastRunStatus: 'success', executionCount: 1204, successRate: 97 },
+  { id: 'a6', name: 'CRM Manager Agent', status: 'active', role: 'crm_manager', family: 'operations', department: 'Operations', workspaceId: 2, model: 'claude', description: 'Manages CRM data', tools: [], constraints: {}, systemPrompt: '', createdAt: new Date(), lastRunAt: new Date(), lastRunStatus: 'success', executionCount: 892, successRate: 99 },
+  { id: 'a7', name: 'Email Writer Agent', status: 'error', role: 'email_writer', family: 'operations', department: 'Operations', workspaceId: 2, model: 'claude', description: 'Writes emails', tools: [], constraints: {}, systemPrompt: '', createdAt: new Date(), lastRunAt: new Date(), lastRunStatus: 'failure', executionCount: 203, successRate: 87 },
+];
+
 const statusColor: Record<string, string> = {
   active: '#22c55e',
   paused: '#eab308',
   error: '#ef4444',
-  draft: '#6b7280',
+  inactive: '#6b7280',
 };
 
-/* ── static agent data ── */
-const STATIC_AGENTS: (Agent & { department: string })[] = [
-  { id: 'a1', name: 'Facebook Agent', family: 'Marketing', status: 'active', role: 'facebook_poster', department: 'Marketing', workspaceId: 2 },
-  { id: 'a2', name: 'Instagram Agent', family: 'Marketing', status: 'active', role: 'instagram_poster', department: 'Marketing', workspaceId: 2 },
-  { id: 'a3', name: 'Blog Writer Agent', family: 'Marketing', status: 'paused', role: 'blog_writer', department: 'Marketing', workspaceId: 2 },
-  { id: 'a4', name: 'Inbound Caller Agent', family: 'Sales', status: 'active', role: 'inbound_caller', department: 'Sales', workspaceId: 2 },
-  { id: 'a5', name: 'Lead Qualifier Agent', family: 'Sales', status: 'active', role: 'lead_qualifier', department: 'Sales', workspaceId: 2 },
-  { id: 'a6', name: 'CRM Manager Agent', family: 'Operations', status: 'active', role: 'crm_manager', department: 'Operations', workspaceId: 2 },
-  { id: 'a7', name: 'Email Writer Agent', family: 'Operations', status: 'error', role: 'email_writer', department: 'Operations', workspaceId: 2 },
-];
+const DEPARTMENTS = ['Marketing', 'Sales', 'Operations'];
 
-/* ── Workspace Node ── */
-function WorkspaceNode({ data }: NodeProps) {
-  return (
-    <div
-      style={{
-        background: 'linear-gradient(135deg, #1e3a5f 0%, #1e293b 100%)',
-        border: '2px solid #3b82f6',
-        borderRadius: 12,
-        padding: '14px 32px',
-        color: '#fff',
-        fontWeight: 700,
-        fontSize: 16,
-        textAlign: 'center',
-        minWidth: 180,
-        boxShadow: '0 4px 20px rgba(59,130,246,0.3)',
-      }}
-    >
-      {data.label}
-      <Handle type="source" position={Position.Bottom} style={{ background: '#3b82f6' }} />
-    </div>
-  );
-}
-
-/* ── Department Node ── */
-function DepartmentNode({ data }: NodeProps) {
-  return (
-    <div
-      style={{
-        background: '#1e293b',
-        border: '1.5px solid #475569',
-        borderRadius: 10,
-        padding: '10px 24px',
-        color: '#e2e8f0',
-        fontWeight: 600,
-        fontSize: 14,
-        textAlign: 'center',
-        minWidth: 150,
-      }}
-    >
-      <Handle type="target" position={Position.Top} style={{ background: '#475569' }} />
-      <div>{data.label}</div>
-      <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
-        {data.agentCount} agent{data.agentCount !== 1 ? 's' : ''}
-      </div>
-      <Handle type="source" position={Position.Bottom} style={{ background: '#475569' }} />
-    </div>
-  );
-}
-
-/* ── Agent Node ── */
-function AgentNode({ data }: NodeProps) {
-  const color = statusColor[data.status] || '#6b7280';
-  return (
-    <div style={{ position: 'relative' }}>
-      <Handle type="target" position={Position.Top} style={{ background: color }} />
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          if (data.onClickAgent) data.onClickAgent();
-        }}
-        style={{
-          background: '#0f172a',
-          border: `1.5px solid ${color}`,
-          borderRadius: 8,
-          padding: '10px 16px',
-          color: '#e2e8f0',
-          fontSize: 13,
-          minWidth: 130,
-          cursor: 'pointer',
-          textAlign: 'center',
-          display: 'block',
-          width: '100%',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, display: 'inline-block' }} />
-          <span style={{ fontWeight: 600 }}>{data.label}</span>
-        </div>
-        <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2, textTransform: 'capitalize' }}>
-          {data.status}
-        </div>
-      </button>
-    </div>
-  );
-}
-
-const nodeTypes: NodeTypes = {
-  workspaceNode: WorkspaceNode,
-  departmentNode: DepartmentNode,
-  agentNode: AgentNode,
-};
-
-/* ── edge style ── */
-const edgeStyle = { stroke: '#4B5563', strokeWidth: 1.5 };
-
-/* ── Main Component ── */
 export default function AgentOrgChart({ workspaceId }: { workspaceId: number }) {
   const [selectedAgent, setSelectedAgent] = useState<any>(null);
 
-  const nodes: Node[] = useMemo(() => {
-    const result: Node[] = [];
-
-    /* Workspace root */
-    result.push({
-      id: 'ws-solis',
-      type: 'workspaceNode',
-      position: { x: 600, y: 0 },
-      data: { label: WORKSPACE_NAMES[workspaceId] || 'Unknown Workspace' },
-      draggable: true,
-    });
-
-    /* Departments */
-    result.push({
-      id: 'dept-marketing',
-      type: 'departmentNode',
-      position: { x: 200, y: 150 },
-      data: { label: 'Marketing', agentCount: 3 },
-      draggable: true,
-    });
-    result.push({
-      id: 'dept-sales',
-      type: 'departmentNode',
-      position: { x: 600, y: 150 },
-      data: { label: 'Sales', agentCount: 2 },
-      draggable: true,
-    });
-    result.push({
-      id: 'dept-operations',
-      type: 'departmentNode',
-      position: { x: 1000, y: 150 },
-      data: { label: 'Operations', agentCount: 2 },
-      draggable: true,
-    });
-
-    /* Agent positions by department */
-    const positions: Record<string, number[]> = {
-      Marketing: [80, 220, 360],
-      Sales: [480, 720],
-      Operations: [880, 1120],
-    };
-    const deptIndex: Record<string, number> = { Marketing: 0, Sales: 0, Operations: 0 };
-
-    STATIC_AGENTS.forEach((agent) => {
-      const dept = agent.department;
-      const xArr = positions[dept];
-      const idx = deptIndex[dept];
-      const x = xArr[idx];
-      deptIndex[dept] = idx + 1;
-
-      result.push({
-        id: agent.id,
-        type: 'agentNode',
-        position: { x, y: 320 },
-        data: {
-          label: agent.name,
-          status: agent.status,
-          agent,
-          onClickAgent: () => setSelectedAgent(agent),
-        },
-        draggable: false,
-      });
-    });
-
-    return result;
-  }, [workspaceId]);
-
-  const edges: Edge[] = useMemo(() => {
-    const result: Edge[] = [];
-    const deptIds = ['dept-marketing', 'dept-sales', 'dept-operations'];
-
-    /* workspace → departments */
-    deptIds.forEach((dId) => {
-      result.push({
-        id: `ws-solis->${dId}`,
-        source: 'ws-solis',
-        target: dId,
-        type: 'smoothstep',
-        animated: false,
-        style: edgeStyle,
-      });
-    });
-
-    /* departments → agents */
-    const deptMap: Record<string, string> = {
-      Marketing: 'dept-marketing',
-      Sales: 'dept-sales',
-      Operations: 'dept-operations',
-    };
-
-    STATIC_AGENTS.forEach((agent) => {
-      const parentId = deptMap[agent.department];
-      result.push({
-        id: `${parentId}->${agent.id}`,
-        source: parentId,
-        target: agent.id,
-        type: 'smoothstep',
-        animated: false,
-        style: edgeStyle,
-      });
-    });
-
-    return result;
-  }, []);
-
   return (
-    <div style={{ width: '100%', height: '100%', position: 'relative' }}>
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        defaultViewport={{ x: 0, y: 0, zoom: 0.85 }}
-        fitView={false}
-        proOptions={{ hideAttribution: true }}
-        nodesDraggable={false}
-        nodesConnectable={false}
-        elementsSelectable={true}
-      />
+    <div style={{
+      width: '100%',
+      height: '100%',
+      overflowY: 'auto',
+      padding: '40px 20px',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      gap: 40,
+    }}>
+
+      {/* Workspace Root */}
+      <div style={{
+        background: 'linear-gradient(135deg, #1e3a5f 0%, #1e293b 100%)',
+        border: '2px solid #3b82f6',
+        borderRadius: 12,
+        padding: '14px 48px',
+        color: '#fff',
+        fontWeight: 700,
+        fontSize: 18,
+        boxShadow: '0 4px 20px rgba(59,130,246,0.3)',
+      }}>
+        Solis Energy
+      </div>
+
+      {/* Departments Row */}
+      <div style={{
+        display: 'flex',
+        gap: 60,
+        alignItems: 'flex-start',
+        width: '100%',
+        justifyContent: 'center',
+      }}>
+        {DEPARTMENTS.map(dept => {
+          const deptAgents = STATIC_AGENTS.filter(a => a.department === dept);
+          return (
+            <div key={dept} style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 16,
+            }}>
+              {/* Department Box */}
+              <div style={{
+                background: '#1e293b',
+                border: '1.5px solid #475569',
+                borderRadius: 10,
+                padding: '10px 24px',
+                color: '#e2e8f0',
+                fontWeight: 600,
+                fontSize: 14,
+                textAlign: 'center',
+                minWidth: 150,
+              }}>
+                <div>{dept}</div>
+                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                  {deptAgents.length} agents
+                </div>
+              </div>
+
+              {/* Agent Cards */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {deptAgents.map(agent => (
+                  <button
+                    key={agent.id}
+                    onClick={() => setSelectedAgent(agent)}
+                    style={{
+                      background: '#0f172a',
+                      border: `1.5px solid ${statusColor[agent.status] || '#6b7280'}`,
+                      borderRadius: 8,
+                      padding: '10px 16px',
+                      color: '#e2e8f0',
+                      fontSize: 13,
+                      minWidth: 160,
+                      cursor: 'pointer',
+                      textAlign: 'center',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
+                      <span style={{
+                        width: 8, height: 8, borderRadius: '50%',
+                        background: statusColor[agent.status] || '#6b7280',
+                        display: 'inline-block',
+                        flexShrink: 0,
+                      }} />
+                      <span style={{ fontWeight: 600 }}>{agent.name}</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2, textTransform: 'capitalize' }}>
+                      {agent.status}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Detail Panel */}
       {selectedAgent && (
         <AgentDetailPanel
           agent={selectedAgent}
