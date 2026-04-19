@@ -31,6 +31,7 @@ export default function AgentDetailPanel({ agent, onClose }: AgentDetailPanelPro
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
+  const seenLogsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -41,6 +42,9 @@ export default function AgentDetailPanel({ agent, onClose }: AgentDetailPanelPro
   }, []);
 
   const addLog = (message: string, level: "info" | "error" | "success" = "info") => {
+    const key = `${level}:${message}`;
+    if (seenLogsRef.current.has(key)) return; // deduplicate
+    seenLogsRef.current.add(key);
     setLogs(prev => [...prev, { timestamp: new Date().toLocaleTimeString(), message, level }]);
   };
 
@@ -49,14 +53,18 @@ export default function AgentDetailPanel({ agent, onClose }: AgentDetailPanelPro
     setIsRunning(true);
     setError(null);
     setLogs([]);
+    seenLogsRef.current = new Set();
     setTaskStatus("starting");
     addLog(`Starting task for ${agent.name}...`);
 
     try {
-      // Calls Vercel proxy → orchestrator (avoids browser mixed-content block)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+
       const response = await fetch("/api/orchestrator/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           project: "apex-crm",
           agent: agent.name,
@@ -64,17 +72,21 @@ export default function AgentDetailPanel({ agent, onClose }: AgentDetailPanelPro
           mode: "github",
         }),
       });
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
         throw new Error((errData as { error?: string }).error || `HTTP ${response.status}`);
       }
 
-      const data = await response.json() as { task_id: string };
-      const id = data.task_id;
+      // API returns { taskId: "...", status: "queued" }
+      const data = await response.json() as { taskId?: string; task_id?: string; status?: string };
+      const id = data.taskId ?? data.task_id ?? null;
+      if (!id) throw new Error("No task ID returned from orchestrator");
+
       setTaskId(id);
       addLog(`Task queued — ID: ${id}`, "success");
-      addLog("Polling for updates every 2 s…");
+      addLog("Polling for live updates...");
 
       pollRef.current = setInterval(async () => {
         try {
@@ -88,25 +100,32 @@ export default function AgentDetailPanel({ agent, onClose }: AgentDetailPanelPro
           };
           setTaskStatus(statusData.status);
 
+          // Show all logs progressively (deduplicated)
           if (statusData.logs?.length) {
-            const latest = statusData.logs[statusData.logs.length - 1];
-            if (latest) addLog(latest);
+            statusData.logs.forEach(logLine => {
+              // Strip timestamp prefix like [07:06:28] for display
+              const clean = logLine.replace(/^\[\d{2}:\d{2}:\d{2}\]\s*/, "");
+              const level = clean.startsWith("✗") ? "error" : clean.startsWith("✓") ? "success" : "info";
+              addLog(clean, level);
+            });
           }
-          if (statusData.result) addLog(`Result: ${statusData.result}`, "success");
 
           if (statusData.status === "completed" || statusData.status === "failed") {
             if (pollRef.current) clearInterval(pollRef.current);
             setIsRunning(false);
             if (statusData.status === "completed") {
-              addLog("✓ Task completed successfully!", "success");
+              addLog("✓ Task completed!", "success");
             } else {
-              addLog(`✗ Task failed: ${statusData.error ?? "Unknown error"}`, "error");
+              addLog(`✗ Failed: ${statusData.error ?? "Unknown error"}`, "error");
             }
           }
         } catch { /* ignore transient poll errors */ }
       }, 2000);
+
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to run task";
+      const msg = err instanceof Error
+        ? (err.name === "AbortError" ? "Request timed out (30s)" : err.message)
+        : "Failed to run task";
       setError(msg);
       addLog(`Error: ${msg}`, "error");
       setIsRunning(false);
@@ -122,6 +141,7 @@ export default function AgentDetailPanel({ agent, onClose }: AgentDetailPanelPro
     setLogs([]);
     setError(null);
     setTaskInput("");
+    seenLogsRef.current = new Set();
   };
 
   if (!agent) return null;
@@ -149,7 +169,6 @@ export default function AgentDetailPanel({ agent, onClose }: AgentDetailPanelPro
         <button onClick={onClose} className="text-gray-500 hover:text-white text-xs px-1">✕</button>
       </div>
 
-      {/* Status row */}
       <div className="flex items-center justify-between mb-2">
         <span className="text-gray-400 text-xs">Status</span>
         <span className={`text-xs font-medium ${statusColors[agent.status] ?? "text-gray-400"}`}>
@@ -164,7 +183,6 @@ export default function AgentDetailPanel({ agent, onClose }: AgentDetailPanelPro
         <span>Triggers: {agent.triggerCount ?? 0}</span>
       </div>
 
-      {/* Run Task */}
       <div className="border-t border-gray-700 pt-3">
         <p className="text-gray-300 text-xs font-medium mb-2">Run Task</p>
 
@@ -191,7 +209,7 @@ export default function AgentDetailPanel({ agent, onClose }: AgentDetailPanelPro
               className="w-full text-xs py-1.5 rounded font-medium disabled:opacity-50 disabled:cursor-not-allowed bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center gap-1"
             >
               {isRunning ? (
-                <><span className="animate-spin inline-block">⟳</span> {taskStatus === "starting" ? "Starting…" : "Running…"}</>
+                <><span className="animate-spin inline-block">⟳</span>{" "}{taskStatus === "starting" ? "Starting…" : "Running…"}</>
               ) : (
                 <>▷ Run Task</>
               )}
@@ -199,11 +217,10 @@ export default function AgentDetailPanel({ agent, onClose }: AgentDetailPanelPro
           </>
         )}
 
-        {/* Live log output */}
         {logs.length > 0 && (
-          <div className="mt-2 bg-gray-950 rounded p-2 max-h-32 overflow-y-auto">
+          <div className="mt-2 bg-gray-950 rounded p-2 max-h-40 overflow-y-auto">
             {logs.map((log, i) => (
-              <div key={i} className={`text-xs font-mono ${logColors[log.level] ?? "text-gray-300"} mb-0.5`}>
+              <div key={i} className={`text-xs font-mono ${logColors[log.level] ?? "text-gray-300"} mb-0.5 leading-tight`}>
                 <span className="text-gray-600">{log.timestamp}</span>{" "}{log.message}
               </div>
             ))}
@@ -212,7 +229,7 @@ export default function AgentDetailPanel({ agent, onClose }: AgentDetailPanelPro
         )}
 
         {taskId && (
-          <p className="text-gray-600 text-xs mt-1">Task ID: {taskId.slice(0, 8)}…</p>
+          <p className="text-gray-600 text-xs mt-1">Task: {taskId.slice(0, 8)}…</p>
         )}
       </div>
     </div>
