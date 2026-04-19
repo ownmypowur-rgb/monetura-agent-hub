@@ -64,7 +64,7 @@ export default function AgentDetailPanel({ agent, onClose }: AgentDetailPanelPro
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-      const response = await fetch(`${ORCHESTRATOR_URL}/run-task`, {
+      const response = await fetch(`${ORCHESTRATOR_URL}/run`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
