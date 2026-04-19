@@ -87,7 +87,6 @@ function AgentNode({ data }: NodeProps) {
   const color = statusColor[data.status] || '#6b7280';
   return (
     <div
-      onClick={data.onClick}
       style={{
         background: '#0f172a',
         border: `1.5px solid ${color}`,
@@ -133,10 +132,6 @@ const edgeStyle = { stroke: '#4B5563', strokeWidth: 1.5 };
 /* ── Main Component ── */
 export default function AgentOrgChart({ workspaceId }: { workspaceId: number }) {
   const [selectedAgent, setSelectedAgent] = useState<any>(null);
-
-  const handleAgentClick = useCallback((agent: (typeof STATIC_AGENTS)[number]) => {
-    setSelectedAgent(agent);
-  }, []);
 
   const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
     if (node.type === 'agentNode' && node.data.agent) {
@@ -202,14 +197,13 @@ export default function AgentOrgChart({ workspaceId }: { workspaceId: number }) 
           label: agent.name,
           status: agent.status,
           agent,
-          onClick: () => handleAgentClick(agent),
         },
         draggable: true,
       });
     });
 
     return result;
-  }, [handleAgentClick, workspaceId]);
+  }, [workspaceId]);
 
   const edges: Edge[] = useMemo(() => {
     const result: Edge[] = [];
