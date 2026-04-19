@@ -1,7 +1,5 @@
 {
   "framework": "nextjs",
   "buildCommand": "next build",
-  "devCommand": "next dev -p 3001",
-  "installCommand": "npm install",
-  "$comment": "redeploy-1776583714"
+  "installCommand": "npm install"
 }
