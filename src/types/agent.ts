@@ -6,6 +6,7 @@ export interface Agent {
   family: string;
   status: AgentStatus;
   workspaceId: number;
+  role?: string;
   description?: string;
   lastRun?: string;
   triggersCount?: number;

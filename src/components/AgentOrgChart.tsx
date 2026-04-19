@@ -24,13 +24,13 @@ const statusColor: Record<string, string> = {
 
 /* ── static agent data ── */
 const STATIC_AGENTS: (Agent & { department: string })[] = [
-  { id: 'a1', name: 'Facebook Agent', family: 'Marketing', status: 'active', department: 'Marketing', workspaceId: 2 },
-  { id: 'a2', name: 'Instagram Agent', family: 'Marketing', status: 'active', department: 'Marketing', workspaceId: 2 },
-  { id: 'a3', name: 'Blog Writer Agent', family: 'Marketing', status: 'paused', department: 'Marketing', workspaceId: 2 },
-  { id: 'a4', name: 'Inbound Caller Agent', family: 'Sales', status: 'active', department: 'Sales', workspaceId: 2 },
-  { id: 'a5', name: 'Lead Qualifier Agent', family: 'Sales', status: 'active', department: 'Sales', workspaceId: 2 },
-  { id: 'a6', name: 'CRM Manager Agent', family: 'Operations', status: 'active', department: 'Operations', workspaceId: 2 },
-  { id: 'a7', name: 'Email Writer Agent', family: 'Operations', status: 'error', department: 'Operations', workspaceId: 2 },
+  { id: 'a1', name: 'Facebook Agent', family: 'Marketing', status: 'active', role: 'facebook_poster', department: 'Marketing', workspaceId: 2 },
+  { id: 'a2', name: 'Instagram Agent', family: 'Marketing', status: 'active', role: 'instagram_poster', department: 'Marketing', workspaceId: 2 },
+  { id: 'a3', name: 'Blog Writer Agent', family: 'Marketing', status: 'paused', role: 'blog_writer', department: 'Marketing', workspaceId: 2 },
+  { id: 'a4', name: 'Inbound Caller Agent', family: 'Sales', status: 'active', role: 'inbound_caller', department: 'Sales', workspaceId: 2 },
+  { id: 'a5', name: 'Lead Qualifier Agent', family: 'Sales', status: 'active', role: 'lead_qualifier', department: 'Sales', workspaceId: 2 },
+  { id: 'a6', name: 'CRM Manager Agent', family: 'Operations', status: 'active', role: 'crm_manager', department: 'Operations', workspaceId: 2 },
+  { id: 'a7', name: 'Email Writer Agent', family: 'Operations', status: 'error', role: 'email_writer', department: 'Operations', workspaceId: 2 },
 ];
 
 /* ── Workspace Node ── */
@@ -132,7 +132,7 @@ const edgeStyle = { stroke: '#4B5563', strokeWidth: 1.5 };
 
 /* ── Main Component ── */
 export default function AgentOrgChart({ workspaceId }: { workspaceId: number }) {
-  const [selectedAgent, setSelectedAgent] = useState<(typeof STATIC_AGENTS)[number] | null>(null);
+  const [selectedAgent, setSelectedAgent] = useState<any>(null);
 
   const handleAgentClick = useCallback((agent: (typeof STATIC_AGENTS)[number]) => {
     setSelectedAgent(agent);
