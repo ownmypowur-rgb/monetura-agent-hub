@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 export const maxDuration = 60;
 
-const ORCHESTRATOR_URL = "http://146.190.254.94:8080";
+const ORCHESTRATOR_URL = "https://orchestrator.moneturamedia.com";
 const API_KEY = "7d7f64cdd061fa2ccce94cba04acccca9e8bc4acceffbdf53400aa67c6d55599";
 
 export async function GET(

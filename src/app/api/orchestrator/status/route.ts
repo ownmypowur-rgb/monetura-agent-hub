@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const ORCHESTRATOR_URL = process.env.ORCHESTRATOR_URL || 'http://146.190.254.94:8080';
+const ORCHESTRATOR_URL = process.env.ORCHESTRATOR_URL || 'https://orchestrator.moneturamedia.com';
 
 export async function GET(request: NextRequest) {
   try {
