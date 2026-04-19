@@ -1,286 +1,220 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
-import { X, Play, Loader2, CheckCircle2, AlertCircle, ChevronDown, ChevronUp } from "lucide-react";
-import type { Agent } from "@/types/agent";
-import { cn } from "@/lib/utils";
 
-const ORCHESTRATOR_URL = process.env.NEXT_PUBLIC_ORCHESTRATOR_URL ?? "http://146.190.254.94:8080";
-const ORCHESTRATOR_API_KEY = process.env.NEXT_PUBLIC_ORCHESTRATOR_API_KEY ?? "";
+interface Agent {
+  id: string;
+  name: string;
+  role: string;
+  status: "active" | "idle" | "error" | "paused";
+  description: string;
+  lastRun?: string;
+  triggerCount?: number;
+}
 
-const statusColors: Record<string, string> = {
-  active: "text-green-400",
-  paused: "text-yellow-400",
-  error: "text-red-400",
-  idle: "text-gray-400",
-};
-
-type TaskStatus = "idle" | "running" | "completed" | "failed";
+interface AgentDetailPanelProps {
+  agent: Agent | null;
+  onClose: () => void;
+}
 
 interface TaskLog {
   timestamp: string;
   message: string;
-  level?: string;
-}
-
-interface AgentDetailPanelProps {
-  agent: Agent;
-  onClose: () => void;
+  level: "info" | "error" | "success";
 }
 
 export default function AgentDetailPanel({ agent, onClose }: AgentDetailPanelProps) {
-  const [taskStatus, setTaskStatus] = useState<TaskStatus>("idle");
-  const [taskId, setTaskId] = useState<string | null>(null);
-  const [logs, setLogs] = useState<TaskLog[]>([]);
-  const [showLogs, setShowLogs] = useState(false);
   const [taskInput, setTaskInput] = useState("");
-  const [errorMsg, setErrorMsg] = useState("");
-  const pollRef = useRef<NodeJS.Timeout | null>(null);
+  const [isRunning, setIsRunning] = useState(false);
+  const [taskId, setTaskId] = useState<string | null>(null);
+  const [taskStatus, setTaskStatus] = useState<string | null>(null);
+  const [logs, setLogs] = useState<TaskLog[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll logs to bottom
   useEffect(() => {
-    if (showLogs && logsEndRef.current) {
-      logsEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [logs, showLogs]);
+    logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [logs]);
 
-  // Cleanup polling on unmount or agent change
   useEffect(() => {
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
-  }, [agent.id]);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, []);
 
-  const pollTaskStatus = (id: string) => {
-    if (pollRef.current) clearInterval(pollRef.current);
-
-    pollRef.current = setInterval(async () => {
-      try {
-        const res = await fetch(`${ORCHESTRATOR_URL}/status/${id}`, {
-          headers: { "x-api-key": ORCHESTRATOR_API_KEY },
-        });
-        if (!res.ok) return;
-        const data = await res.json();
-
-        // Update logs
-        if (data.logs && Array.isArray(data.logs)) {
-          setLogs(data.logs);
-        } else if (data.result) {
-          setLogs((prev) => {
-            const last = prev[prev.length - 1];
-            const msg = typeof data.result === "string" ? data.result : JSON.stringify(data.result);
-            if (!last || last.message !== msg) {
-              return [...prev, { timestamp: new Date().toISOString(), message: msg }];
-            }
-            return prev;
-          });
-        }
-
-        if (data.status === "completed") {
-          setTaskStatus("completed");
-          if (pollRef.current) clearInterval(pollRef.current);
-        } else if (data.status === "failed" || data.status === "error") {
-          setTaskStatus("failed");
-          setErrorMsg(data.error ?? "Task failed");
-          if (pollRef.current) clearInterval(pollRef.current);
-        }
-      } catch {
-        // Network error - keep polling
-      }
-    }, 2000);
+  const addLog = (message: string, level: "info" | "error" | "success" = "info") => {
+    setLogs(prev => [...prev, { timestamp: new Date().toLocaleTimeString(), message, level }]);
   };
 
-  const handleRunTask = async () => {
-    if (!taskInput.trim()) return;
-    setTaskStatus("running");
+  const runTask = async () => {
+    if (!agent || !taskInput.trim()) return;
+    setIsRunning(true);
+    setError(null);
     setLogs([]);
-    setErrorMsg("");
-    setShowLogs(true);
+    setTaskStatus("starting");
+    addLog(`Starting task for ${agent.name}...`);
 
     try {
-      const res = await fetch(`${ORCHESTRATOR_URL}/run-task`, {
+      // Calls Vercel proxy → orchestrator (avoids browser mixed-content block)
+      const response = await fetch("/api/orchestrator/run", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": ORCHESTRATOR_API_KEY,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          project: "monetura-agent-hub",
-          task: `[${agent.name}] ${taskInput.trim()}`,
-          mode: "github",
+          project: "apex-crm",
           agent: agent.name,
-          agentFamily: agent.family,
+          task: taskInput,
+          mode: "github",
         }),
       });
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error ?? `HTTP ${res.status}`);
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error((errData as { error?: string }).error || `HTTP ${response.status}`);
       }
 
-      const data = await res.json();
-      setTaskId(data.taskId);
-      setLogs([{ timestamp: new Date().toISOString(), message: `Task started: ${data.taskId}` }]);
-      pollTaskStatus(data.taskId);
-    } catch (err) {
+      const data = await response.json() as { task_id: string };
+      const id = data.task_id;
+      setTaskId(id);
+      addLog(`Task queued — ID: ${id}`, "success");
+      addLog("Polling for updates every 2 s…");
+
+      pollRef.current = setInterval(async () => {
+        try {
+          const statusRes = await fetch(`/api/orchestrator/status/${id}`);
+          if (!statusRes.ok) return;
+          const statusData = await statusRes.json() as {
+            status: string;
+            logs?: string[];
+            result?: string;
+            error?: string;
+          };
+          setTaskStatus(statusData.status);
+
+          if (statusData.logs?.length) {
+            const latest = statusData.logs[statusData.logs.length - 1];
+            if (latest) addLog(latest);
+          }
+          if (statusData.result) addLog(`Result: ${statusData.result}`, "success");
+
+          if (statusData.status === "completed" || statusData.status === "failed") {
+            if (pollRef.current) clearInterval(pollRef.current);
+            setIsRunning(false);
+            if (statusData.status === "completed") {
+              addLog("✓ Task completed successfully!", "success");
+            } else {
+              addLog(`✗ Task failed: ${statusData.error ?? "Unknown error"}`, "error");
+            }
+          }
+        } catch { /* ignore transient poll errors */ }
+      }, 2000);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to run task";
+      setError(msg);
+      addLog(`Error: ${msg}`, "error");
+      setIsRunning(false);
       setTaskStatus("failed");
-      setErrorMsg(err instanceof Error ? err.message : "Failed to start task");
     }
   };
 
-  const handleReset = () => {
+  const resetTask = () => {
     if (pollRef.current) clearInterval(pollRef.current);
-    setTaskStatus("idle");
+    setIsRunning(false);
     setTaskId(null);
+    setTaskStatus(null);
     setLogs([]);
-    setErrorMsg("");
+    setError(null);
     setTaskInput("");
   };
 
+  if (!agent) return null;
+
+  const statusColors: Record<string, string> = {
+    active: "text-green-400",
+    idle: "text-gray-400",
+    error: "text-red-400",
+    paused: "text-yellow-400",
+  };
+  const logColors: Record<string, string> = {
+    info: "text-gray-300",
+    error: "text-red-400",
+    success: "text-green-400",
+  };
+
   return (
-    <div className="absolute right-4 top-4 bottom-4 w-96 bg-gray-900 border border-gray-700 rounded-xl p-5 z-50 overflow-auto shadow-2xl flex flex-col gap-4">
+    <div className="bg-gray-900 border border-gray-700 rounded-lg p-4 w-72 shadow-xl">
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex items-center justify-between mb-3">
         <div>
-          <h2 className="text-white font-semibold text-base">{agent.name}</h2>
-          <p className="text-gray-400 text-xs mt-0.5">{agent.family}</p>
+          <h3 className="text-white font-semibold text-sm">{agent.name}</h3>
+          <p className="text-gray-400 text-xs">{agent.role}</p>
         </div>
-        <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
-          <X size={18} />
-        </button>
+        <button onClick={onClose} className="text-gray-500 hover:text-white text-xs px-1">✕</button>
       </div>
 
-      {/* Agent Info */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-gray-400">Status</span>
-          <span className={cn("font-medium capitalize", statusColors[agent.status] ?? "text-gray-400")}>
-            {agent.status}
-          </span>
-        </div>
-        {agent.description && (
-          <div>
-            <p className="text-gray-400 text-xs mb-1">Description</p>
-            <p className="text-gray-300 text-sm">{agent.description}</p>
-          </div>
-        )}
-        {agent.lastRun && (
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-400">Last Run</span>
-            <span className="text-gray-300">{agent.lastRun}</span>
-          </div>
-        )}
-        {agent.triggersCount !== undefined && (
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-400">Triggers</span>
-            <span className="text-gray-300">{agent.triggersCount}</span>
-          </div>
-        )}
+      {/* Status row */}
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-gray-400 text-xs">Status</span>
+        <span className={`text-xs font-medium ${statusColors[agent.status] ?? "text-gray-400"}`}>
+          {agent.status.charAt(0).toUpperCase() + agent.status.slice(1)}
+        </span>
       </div>
 
-      {/* Divider */}
-      <div className="border-t border-gray-700" />
+      <p className="text-gray-400 text-xs mb-2">{agent.description}</p>
 
-      {/* Run Task Section */}
-      <div className="space-y-3">
-        <p className="text-gray-300 text-sm font-medium">Run Task</p>
+      <div className="flex justify-between mb-3 text-xs text-gray-500">
+        <span>Last Run: {agent.lastRun ?? "Never"}</span>
+        <span>Triggers: {agent.triggerCount ?? 0}</span>
+      </div>
 
-        {taskStatus === "idle" && (
+      {/* Run Task */}
+      <div className="border-t border-gray-700 pt-3">
+        <p className="text-gray-300 text-xs font-medium mb-2">Run Task</p>
+
+        {(taskStatus === "completed" || taskStatus === "failed") ? (
+          <button
+            onClick={resetTask}
+            className="w-full text-xs py-1.5 rounded bg-gray-700 text-gray-300 hover:bg-gray-600"
+          >
+            Run Another Task
+          </button>
+        ) : (
           <>
             <textarea
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-sm text-white placeholder-gray-500 resize-none focus:outline-none focus:border-blue-500 transition-colors"
-              rows={3}
-              placeholder={`Describe what you want ${agent.name} to do...`}
               value={taskInput}
               onChange={(e) => setTaskInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleRunTask();
-              }}
+              placeholder={`Describe what you want ${agent.name} to do…`}
+              className="w-full text-xs bg-gray-800 text-white border border-gray-600 rounded p-2 mb-2 resize-none h-16 focus:outline-none focus:border-blue-500"
+              disabled={isRunning}
             />
+            {error && <p className="text-red-400 text-xs mb-2">{error}</p>}
             <button
-              onClick={handleRunTask}
-              disabled={!taskInput.trim()}
-              className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-medium py-2.5 rounded-lg transition-colors"
+              onClick={runTask}
+              disabled={isRunning || !taskInput.trim()}
+              className="w-full text-xs py-1.5 rounded font-medium disabled:opacity-50 disabled:cursor-not-allowed bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center gap-1"
             >
-              <Play size={14} />
-              Run Task
+              {isRunning ? (
+                <><span className="animate-spin inline-block">⟳</span> {taskStatus === "starting" ? "Starting…" : "Running…"}</>
+              ) : (
+                <>▷ Run Task</>
+              )}
             </button>
           </>
         )}
 
-        {taskStatus === "running" && (
-          <div className="flex items-center gap-2 text-blue-400 text-sm">
-            <Loader2 size={16} className="animate-spin" />
-            <span>Running task...</span>
-            {taskId && <span className="text-gray-500 text-xs ml-auto">#{taskId.slice(-6)}</span>}
+        {/* Live log output */}
+        {logs.length > 0 && (
+          <div className="mt-2 bg-gray-950 rounded p-2 max-h-32 overflow-y-auto">
+            {logs.map((log, i) => (
+              <div key={i} className={`text-xs font-mono ${logColors[log.level] ?? "text-gray-300"} mb-0.5`}>
+                <span className="text-gray-600">{log.timestamp}</span>{" "}{log.message}
+              </div>
+            ))}
+            <div ref={logsEndRef} />
           </div>
         )}
 
-        {taskStatus === "completed" && (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-green-400 text-sm">
-              <CheckCircle2 size={16} />
-              <span>Task completed successfully</span>
-            </div>
-            <button
-              onClick={handleReset}
-              className="w-full text-xs text-gray-400 hover:text-white py-1.5 rounded-lg border border-gray-700 hover:border-gray-500 transition-colors"
-            >
-              Run another task
-            </button>
-          </div>
-        )}
-
-        {taskStatus === "failed" && (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-red-400 text-sm">
-              <AlertCircle size={16} />
-              <span>Task failed</span>
-            </div>
-            {errorMsg && <p className="text-red-300 text-xs bg-red-950/30 rounded p-2">{errorMsg}</p>}
-            <button
-              onClick={handleReset}
-              className="w-full text-xs text-gray-400 hover:text-white py-1.5 rounded-lg border border-gray-700 hover:border-gray-500 transition-colors"
-            >
-              Try again
-            </button>
-          </div>
+        {taskId && (
+          <p className="text-gray-600 text-xs mt-1">Task ID: {taskId.slice(0, 8)}…</p>
         )}
       </div>
-
-      {/* Live Logs */}
-      {logs.length > 0 && (
-        <div className="space-y-2">
-          <button
-            onClick={() => setShowLogs((v) => !v)}
-            className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white transition-colors w-full"
-          >
-            {showLogs ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-            <span>Live logs ({logs.length})</span>
-          </button>
-
-          {showLogs && (
-            <div className="bg-gray-950 border border-gray-800 rounded-lg p-3 max-h-48 overflow-y-auto font-mono text-xs space-y-1">
-              {logs.map((log, i) => (
-                <div key={i} className="flex gap-2">
-                  <span className="text-gray-600 shrink-0">
-                    {new Date(log.timestamp).toLocaleTimeString()}
-                  </span>
-                  <span className={cn(
-                    "break-all",
-                    log.level === "error" ? "text-red-400" :
-                    log.level === "warn" ? "text-yellow-400" :
-                    "text-gray-300"
-                  )}>
-                    {log.message}
-                  </span>
-                </div>
-              ))}
-              <div ref={logsEndRef} />
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
