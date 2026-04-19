@@ -7,15 +7,16 @@ const API_KEY = "7d7f64cdd061fa2ccce94cba04acccca9e8bc4acceffbdf53400aa67c6d5559
 
 export async function GET(
   request: Request,
-  { params }: { params: { taskId: string } }
+  { params }: { params: Promise<{ taskId: string }> }
 ) {
   try {
+    const { taskId } = await params;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
-    
+
     let response;
     try {
-      response = await fetch(`${ORCHESTRATOR_URL}/status/${params.taskId}`, {
+      response = await fetch(`${ORCHESTRATOR_URL}/status/${taskId}`, {
         headers: { "x-api-key": API_KEY },
         signal: controller.signal,
       });
