@@ -1,6 +1,9 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 
+const ORCHESTRATOR_URL = "https://mountain-compliance-molecular-territory.trycloudflare.com";
+const ORCHESTRATOR_API_KEY = "7d7f64cdd061fa2ccce94cba04acccca9e8bc4acceffbdf53400aa67c6d55599";
+
 interface Agent {
   id: string;
   name: string;
@@ -43,7 +46,7 @@ export default function AgentDetailPanel({ agent, onClose }: AgentDetailPanelPro
 
   const addLog = (message: string, level: "info" | "error" | "success" = "info") => {
     const key = `${level}:${message}`;
-    if (seenLogsRef.current.has(key)) return; // deduplicate
+    if (seenLogsRef.current.has(key)) return;
     seenLogsRef.current.add(key);
     setLogs(prev => [...prev, { timestamp: new Date().toLocaleTimeString(), message, level }]);
   };
@@ -59,11 +62,14 @@ export default function AgentDetailPanel({ agent, onClose }: AgentDetailPanelPro
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-      const response = await fetch("/api/orchestrator/run", {
+      const response = await fetch(`${ORCHESTRATOR_URL}/run-task`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": ORCHESTRATOR_API_KEY,
+        },
         signal: controller.signal,
         body: JSON.stringify({
           project: "apex-crm",
@@ -79,7 +85,6 @@ export default function AgentDetailPanel({ agent, onClose }: AgentDetailPanelPro
         throw new Error((errData as { error?: string }).error || `HTTP ${response.status}`);
       }
 
-      // API returns { taskId: "...", status: "queued" }
       const data = await response.json() as { taskId?: string; task_id?: string; status?: string };
       const id = data.taskId ?? data.task_id ?? null;
       if (!id) throw new Error("No task ID returned from orchestrator");
@@ -90,7 +95,9 @@ export default function AgentDetailPanel({ agent, onClose }: AgentDetailPanelPro
 
       pollRef.current = setInterval(async () => {
         try {
-          const statusRes = await fetch(`/api/orchestrator/status/${id}`);
+          const statusRes = await fetch(`${ORCHESTRATOR_URL}/status/${id}`, {
+            headers: { "x-api-key": ORCHESTRATOR_API_KEY },
+          });
           if (!statusRes.ok) return;
           const statusData = await statusRes.json() as {
             status: string;
@@ -100,10 +107,8 @@ export default function AgentDetailPanel({ agent, onClose }: AgentDetailPanelPro
           };
           setTaskStatus(statusData.status);
 
-          // Show all logs progressively (deduplicated)
           if (statusData.logs?.length) {
             statusData.logs.forEach(logLine => {
-              // Strip timestamp prefix like [07:06:28] for display
               const clean = logLine.replace(/^\[\d{2}:\d{2}:\d{2}\]\s*/, "");
               const level = clean.startsWith("✗") ? "error" : clean.startsWith("✓") ? "success" : "info";
               addLog(clean, level);
@@ -124,7 +129,7 @@ export default function AgentDetailPanel({ agent, onClose }: AgentDetailPanelPro
 
     } catch (err: unknown) {
       const msg = err instanceof Error
-        ? (err.name === "AbortError" ? "Request timed out (30s)" : err.message)
+        ? (err.name === "AbortError" ? "Request timed out (10s)" : err.message)
         : "Failed to run task";
       setError(msg);
       addLog(`Error: ${msg}`, "error");
@@ -160,7 +165,6 @@ export default function AgentDetailPanel({ agent, onClose }: AgentDetailPanelPro
 
   return (
     <div className="bg-gray-900 border border-gray-700 rounded-lg p-4 w-72 shadow-xl">
-      {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <div>
           <h3 className="text-white font-semibold text-sm">{agent.name}</h3>
