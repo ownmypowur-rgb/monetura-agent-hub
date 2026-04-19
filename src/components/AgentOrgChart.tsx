@@ -138,6 +138,12 @@ export default function AgentOrgChart({ workspaceId }: { workspaceId: number }) 
     setSelectedAgent(agent);
   }, []);
 
+  const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
+    if (node.type === 'agentNode' && node.data.agent) {
+      setSelectedAgent(node.data.agent);
+    }
+  }, []);
+
   const nodes: Node[] = useMemo(() => {
     const result: Node[] = [];
 
@@ -195,6 +201,7 @@ export default function AgentOrgChart({ workspaceId }: { workspaceId: number }) 
         data: {
           label: agent.name,
           status: agent.status,
+          agent,
           onClick: () => handleAgentClick(agent),
         },
         draggable: true,
@@ -252,6 +259,7 @@ export default function AgentOrgChart({ workspaceId }: { workspaceId: number }) 
         fitView={false}
         proOptions={{ hideAttribution: true }}
         nodesDraggable={true}
+        onNodeClick={onNodeClick}
         nodesConnectable={false}
         elementsSelectable={true}
       />
