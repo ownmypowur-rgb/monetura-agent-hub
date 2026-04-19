@@ -164,7 +164,15 @@ export default function AgentDetailPanel({ agent, onClose }: AgentDetailPanelPro
   };
 
   return (
-    <div className="bg-gray-900 border border-gray-700 rounded-lg p-4 w-72 shadow-xl">
+    <div className="fixed top-0 right-0 bottom-0 p-4 overflow-y-auto"
+      style={{
+        width: "400px",
+        backgroundColor: "#0f172a",
+        borderLeft: "1px solid #1e293b",
+        zIndex: 1000,
+        boxShadow: "-4px 0 24px rgba(0,0,0,0.5)",
+        transition: "transform 0.3s ease",
+      }}>
       <div className="flex items-center justify-between mb-3">
         <div>
           <h3 className="text-white font-semibold text-sm">{agent.name}</h3>
